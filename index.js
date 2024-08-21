@@ -12,7 +12,7 @@ const socketIo = require('socket.io');
 const { jwtSecret, dbUri } = require('./config');
 // const Message = require('./models/Message');
 const dbURI= 'mongodb+srv://aryansingh726781:aryan7267@cluster0.6gg1fz0.mongodb.net/chatapp?retryWrites=true&w=majority&appName=Cluster0 ';
-
+// const dbURI= "mongodb://0.0.0.0:27017/chating-db"
 const app = express();
 const port = process.env.PORT || 5000;
 
