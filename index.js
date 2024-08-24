@@ -33,6 +33,8 @@ mongoose.connect( dbURI, {
 const userSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true },
   password: { type: String, required: true },
+  createdAt: { type: Date, default: Date.now }, // Add createdAt for registration date
+  lastLogin: { type: Date } // Add lastLogin for tracking login date
 });
 
 const User = mongoose.model('User', userSchema);
@@ -42,33 +44,17 @@ const messageSchema = new mongoose.Schema({
   username: { type: String, required: true },
   message: { type: String, required: true },
   timestamp: { type: Date, default: Date.now },
+  createdAt: { type: Date, default: Date.now },
+  seenBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
 });
 
 const Message = mongoose.model('Message', messageSchema);
 
 module.exports = Message;
-
-// Register Route
-app.post('/register', async (req, res) => {
-  const { username, password } = req.body;
-
-  try {
-    const existingUser = await User.findOne({ username });
-    if (existingUser) {
-      return res.status(400).json({ message: 'User already exists' });
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const newUser = new User({ username, password: hashedPassword });
-
-    await newUser.save();
-    res.status(201).json({ message: 'User registered successfully' });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
 // Login Route
+
+
+
 app.post('/login', async (req, res) => {
   const { username, password } = req.body;
 
@@ -82,6 +68,8 @@ app.post('/login', async (req, res) => {
     if (!isMatch) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
+user.lastLogin = new Date(); // Update lastLogin date
+await user.save();
 
     const token = jwt.sign({ userId: user._id, username: user.username }, jwtSecret, { expiresIn: '1h' });
     res.json({ token });
@@ -89,6 +77,22 @@ app.post('/login', async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 });
+
+
+// Register
+app.post('/register', async (req, res) => {
+  try {
+    const { username,  password } = req.body;
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = new User({ username,password: hashedPassword });
+    await user.save();
+    res.status(201).json({ message: 'User registered successfully', user });
+  } catch (error) {
+    res.status(500).json({ message: 'Error registering user', error });
+  }
+});
+
+
 
 // Middleware to verify JWT
 const auth = (req, res, next) => {
@@ -164,10 +168,23 @@ io.on('connection', (socket) => {
   console.log('New client connected', socket.user.username);
 
   socket.on('message', async (data) => {
-    const message = new Message({ username: socket.user.username, message: data });
+    const message = new Message({ username: socket.user.username, message: data,  timestamp: new Date(), });
     await message.save();
     io.emit('message', message);
+    
   });
+
+
+
+  socket.on('message-seen', async (messageId) => {
+    const message = await Message.findById(messageId);
+    if (message && !message.seenBy.includes(socket.user.userId)) {
+      message.seenBy.push(socket.user.userId);
+      await message.save();
+      io.emit('message-seen', { messageId, userId: socket.user.userId });
+    }
+  });
+  
 
   socket.on('disconnect', () => {
     console.log('Client disconnected');
